@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+  <title>AR Studio Lite – Editor (MVP)</title>
+  <style>
+    :root { color-scheme: dark; }
+    html, body { margin:0; height:100%; background:#0b0b0e; color:#e6e6f0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; }
+    .app { display:grid; grid-template-columns: 340px 1fr 360px; grid-template-rows: auto 1fr; grid-template-areas: "topbar topbar topbar" "left center right"; height:100vh; gap:8px; padding:8px; box-sizing:border-box; }
+    .topbar { grid-area: topbar; display:flex; align-items:center; gap:10px; background:#11131a; border:1px solid #222635; border-radius:12px; padding:10px 12px; }
+    .badge { font-weight:600; letter-spacing:.2px; }
+    .left { grid-area: left; background:#11131a; border:1px solid #222635; border-radius:12px; padding:10px; display:flex; flex-direction:column; gap:10px; overflow:auto; }
+    .center { grid-area: center; background:#0d0f16; border:1px solid #222635; border-radius:12px; position:relative; overflow:hidden; }
+    .right { grid-area: right; background:#11131a; border:1px solid #222635; border-radius:12px; padding:10px; overflow:auto; }
+    textarea { width:100%; height:260px; background:#0d0f16; color:#e6e6f0; border:1px solid #222635; border-radius:10px; padding:10px; box-sizing:border-box; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size:12px; }
+    .btn { background:#2a60ff; color:white; border:none; padding:8px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
+    .btn.secondary { background:#1b1f2d; border:1px solid #2a3554; }
+    .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    label { font-size:12px; color:#aab0c0; display:block; margin-bottom:6px; }
+    input[type="text"], select, input[type="number"] { width:100%; background:#0d0f16; color:#e6e6f0; border:1px solid #222635; border-radius:8px; padding:8px; box-sizing:border-box; }
+    .panel { background:#0d0f16; border:1px solid #222635; border-radius:10px; padding:10px; }
+    canvas { width:100%; height:100%; display:block; }
+    .qr-modal { position:fixed; inset:0; background:rgba(0,0,0,.6); display:none; align-items:center; justify-content:center; }
+    .qr-box { background:#10131d; border:1px solid #2a3554; border-radius:14px; padding:18px; }
+    .hint { color:#98a2b3; font-size:12px; }
+    a { color:#9dc1ff; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="badge">🚀 AR Studio Lite – Editor (MVP)</div>
+      <button class="btn" id="btnNew">Neue Szene</button>
+      <button class="btn secondary" id="btnLoad">Beispiel laden</button>
+      <div style="flex:1"></div>
+      <button class="btn" id="btnPublishImage">Öffnen: Image‑AR</button>
+      <button class="btn" id="btnPublishSurface">Öffnen: Surface‑AR</button>
+      <button class="btn secondary" id="btnQR">QR‑Code</button>
+    </div>
+
+    <div class="left">
+      <div class="panel">
+        <label for="sceneJson">Szenen‑JSON</label>
+        <textarea id="sceneJson" spellcheck="false"></textarea>
+        <div class="row">
+          <button class="btn" id="btnApply">Übernehmen → Vorschau</button>
+          <button class="btn secondary" id="btnFormat">Formatieren</button>
+        </div>
+        <p class="hint">Tipp: Modelle als GLB/GLTF mit CORS laden (z.B. <code>https://modelviewer.dev/shared-assets/models/Astronaut.glb</code>).</p>
+      </div>
+      <div class="panel">
+        <label>Anchor</label>
+        <div class="row">
+          <select id="anchorType">
+            <option value="image">image (Target)</option>
+            <option value="surface">surface (Hit‑Test)</option>
+          </select>
+        </div>
+        <label for="imageUrl" style="margin-top:8px;">Target‑Bild (.png, optional – für Editor‑Vorschau)</label>
+        <input id="imageUrl" type="text" placeholder="https://.../card.png" />
+      </div>
+    </div>
+
+    <div class="center">
+      <canvas id="preview"></canvas>
+    </div>
+
+    <div class="right">
+      <div class="panel">
+        <label>Ausgewählter Node</label>
+        <select id="nodeSelect"></select>
+        <div class="row" style="margin-top:8px;">
+          <div style="flex:1">
+            <label>Position (x,y,z)</label>
+            <input id="pos" type="text" placeholder="0,0,0" />
+          </div>
+          <div style="flex:1">
+            <label>Rotation (x,y,z, Grad)</label>
+            <input id="rot" type="text" placeholder="0,0,0" />
+          </div>
+          <div style="flex:1">
+            <label>Scale (x,y,z)</label>
+            <input id="scl" type="text" placeholder="1,1,1" />
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <label>Asset‑URL (GLB/GLTF)</label>
+        <input id="assetUrl" type="text" placeholder="https://.../model.glb" />
+        <label style="margin-top:8px;">Audio‑URL (optional)</label>
+        <input id="audioUrl" type="text" placeholder="https://.../sound.mp3" />
+      </div>
+      <p class="hint">Publish erzeugt Links mit eingebettetem JSON (Base64) für <code>image-viewer.html</code> oder <code>surface-viewer.html</code>. Die Viewer‑Dateien müssen zusammen mit diesem Editor im selben Ordner liegen.</p>
+    </div>
+  </div>
+
+  <div class="qr-modal" id="qrModal"><div class="qr-box"><div id="qr"></div></div></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.158.0/build/three.module.js';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.158.0/examples/jsm/loaders/GLTFLoader.js';
+    import { OrbitControls } from 'https://unpkg.com/three@0.158.0/examples/jsm/controls/OrbitControls.js';
+
+    const $ = (sel) => document.querySelector(sel);
+    const sceneJsonEl = $('#sceneJson');
+    const anchorTypeEl = $('#anchorType');
+    const imageUrlEl = $('#imageUrl');
+    const nodeSelectEl = $('#nodeSelect');
+    const posEl = $('#pos'); const rotEl = $('#rot'); const sclEl = $('#scl');
+    const assetUrlEl = $('#assetUrl'); const audioUrlEl = $('#audioUrl');
+
+    const defaultScene = {
+      meta: { name: "Demo", version: 1 },
+      anchor: { type: "image", src: "https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.png" },
+      nodes: [{
+        id: "hero",
+        type: "model",
+        // GLB from model-viewer shared assets
+        src: "https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+        transform: { position: [0,0,0], rotation: [0,0,0], scale: [0.5,0.5,0.5] },
+        behaviors: [
+          { on: "onStart", action: "playAnimation", clip: "__all__" },
+          { on: "onTap", action: "playSound", src: "" }
+        ]
+      }]
+    };
+
+    // --- 3D Preview ---
+    const canvas = $('#preview');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 100);
+    camera.position.set(2.8, 1.6, 2.8);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0.6, 0);
+    controls.update();
+    const light = new THREE.HemisphereLight(0xffffff, 0x222244, 1.2);
+    scene.add(light);
+    const dir = new THREE.DirectionalLight(0xffffff, 1);
+    dir.position.set(2,3,2); scene.add(dir);
+
+    const grid = new THREE.GridHelper(10, 10, 0x334455, 0x223344);
+    grid.position.y = 0; scene.add(grid);
+
+    const loader = new GLTFLoader();
+    const loaded = new Map();
+
+    let currentData = structuredClone(defaultScene);
+    let currentModel = null;
+
+    function resize() {
+      const w = canvas.clientWidth || canvas.parentElement.clientWidth;
+      const h = canvas.clientHeight || canvas.parentElement.clientHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+    }
+    new ResizeObserver(resize).observe(canvas.parentElement);
+
+    function loadModel(url){
+      if (currentModel) { scene.remove(currentModel); currentModel.traverse(o=>{ if(o.material&&o.material.dispose) o.material.dispose(); if(o.geometry&&o.geometry.dispose) o.geometry.dispose(); }); }
+      if (!url) return;
+      loader.load(url, (gltf)=>{
+        currentModel = gltf.scene;
+        scene.add(currentModel);
+        applyTransformUI();
+      }, undefined, (e)=>console.warn("GLB load error", e));
+    }
+
+    function render(){ renderer.render(scene, camera); requestAnimationFrame(render); }
+    render();
+
+    function updateUIFromData(){
+      sceneJsonEl.value = JSON.stringify(currentData, null, 2);
+      anchorTypeEl.value = currentData.anchor?.type || "image";
+      imageUrlEl.value = currentData.anchor?.src || "";
+      nodeSelectEl.innerHTML = "";
+      for(const n of currentData.nodes){
+        const opt = document.createElement('option'); opt.value=n.id; opt.textContent=n.id; nodeSelectEl.appendChild(opt);
+      }
+      const first = currentData.nodes[0]; if (first) {
+        assetUrlEl.value = first.src || "";
+        audioUrlEl.value = (first.behaviors?.find(b=>b.action==='playSound')?.src) || "";
+        const t = first.transform || {position:[0,0,0], rotation:[0,0,0], scale:[1,1,1]};
+        posEl.value = t.position.join(",");
+        rotEl.value = t.rotation.join(",");
+        sclEl.value = t.scale.join(",");
+        loadModel(first.src);
+      }
+    }
+
+    function applyTransformUI(){
+      const n = currentData.nodes.find(n=>n.id===nodeSelectEl.value) || currentData.nodes[0];
+      if (!n || !currentModel) return;
+      const [px,py,pz] = (posEl.value || "0,0,0").split(",").map(Number);
+      const [rx,ry,rz] = (rotEl.value || "0,0,0").split(",").map(v=>THREE.MathUtils.degToRad(Number(v)));
+      const [sx,sy,sz] = (sclEl.value || "1,1,1").split(",").map(Number);
+      n.transform = { position:[px,py,pz], rotation:[rx,ry,rz].map(v=>THREE.MathUtils.radToDeg(v)), scale:[sx,sy,sz] };
+      currentModel.position.set(px,py,pz);
+      currentModel.rotation.set(THREE.MathUtils.degToRad(n.transform.rotation[0]), THREE.MathUtils.degToRad(n.transform.rotation[1]), THREE.MathUtils.degToRad(n.transform.rotation[2]));
+      currentModel.scale.set(sx,sy,sz);
+    }
+
+    // Buttons
+    $('#btnFormat').onclick = ()=>{ try { const obj = JSON.parse(sceneJsonEl.value); sceneJsonEl.value = JSON.stringify(obj, null, 2); } catch(e){ alert("JSON fehlerhaft: " + e.message); } };
+    $('#btnApply').onclick = ()=>{
+      try {
+        currentData = JSON.parse(sceneJsonEl.value);
+        updateUIFromData();
+      } catch(e){ alert("JSON fehlerhaft: " + e.message); }
+    };
+    $('#btnNew').onclick = ()=>{ currentData = structuredClone(defaultScene); updateUIFromData(); };
+    $('#btnLoad').onclick = ()=>{ currentData = structuredClone(defaultScene); updateUIFromData(); };
+
+    nodeSelectEl.onchange = ()=>{ updateUIFromData(); };
+    [posEl,rotEl,sclEl].forEach(el=> el.addEventListener('change', applyTransformUI));
+    assetUrlEl.addEventListener('change', ()=>{
+      const n = currentData.nodes[0]; if (!n) return;
+      n.src = assetUrlEl.value.trim(); loadModel(n.src);
+    });
+    audioUrlEl.addEventListener('change', ()=>{
+      const n = currentData.nodes[0]; if (!n) return;
+      const b = n.behaviors?.find(x=>x.action==='playSound'); if (b) b.src = audioUrlEl.value.trim(); else n.behaviors.push({on:"onTap",action:"playSound",src:audioUrlEl.value.trim()});
+    });
+    anchorTypeEl.addEventListener('change', ()=>{
+      currentData.anchor = currentData.anchor || {}; currentData.anchor.type = anchorTypeEl.value;
+    });
+    imageUrlEl.addEventListener('change', ()=>{
+      currentData.anchor = currentData.anchor || {}; currentData.anchor.src = imageUrlEl.value.trim();
+    });
+
+    function encodedScene(){
+      // Three rotations are stored in degrees in UI, ensure JSON uses degrees consistently
+      const copy = JSON.parse(JSON.stringify(currentData));
+      // Keep as-is
+      return btoa(encodeURIComponent(JSON.stringify(copy)));
+    }
+    function openViewer(type){
+      const file = type === 'image' ? 'image-viewer.html' : 'surface-viewer.html';
+      const url = file + '?scene=' + encodedScene();
+      window.open(url, '_blank');
+      return url;
+    }
+    $('#btnPublishImage').onclick = ()=> openViewer('image');
+    $('#btnPublishSurface').onclick = ()=> openViewer('surface');
+
+    // QR
+    const qrModal = $('#qrModal'); const qrBox = $('#qr');
+    $('#btnQR').onclick = ()=>{
+      const url = (currentData.anchor?.type==='image') ? (location.origin + location.pathname.replace('editor.html','image-viewer.html') + '?scene=' + encodedScene()) : (location.origin + location.pathname.replace('editor.html','surface-viewer.html') + '?scene=' + encodedScene());
+      qrBox.innerHTML = "";
+      /* global QRCode */
+      new QRCode(qrBox, { text: url, width: 240, height: 240 });
+      qrModal.style.display = 'flex';
+    };
+    qrModal.onclick = ()=> qrModal.style.display = 'none';
+
+    // Init
+    currentData = structuredClone(defaultScene);
+    updateUIFromData();
+    resize();
+  </script>
+</body>
+</html>
