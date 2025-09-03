@@ -35,7 +35,9 @@
       <button class="btn secondary" id="btnLoad">Beispiel laden</button>
       <div style="flex:1"></div>
       <button class="btn" id="btnPublishImage">Öffnen: Image‑AR</button>
+      <a class="btn secondary" id="hrefImage" href="#" target="_blank" rel="noopener">Direktlink</a>
       <button class="btn" id="btnPublishSurface">Öffnen: Surface‑AR</button>
+      <a class="btn secondary" id="hrefSurface" href="#" target="_blank" rel="noopener">Direktlink</a>
       <button class="btn secondary" id="btnQR">QR‑Code</button>
     </div>
 
@@ -238,6 +240,8 @@
       return btoa(encodeURIComponent(JSON.stringify(copy)));
     }
     function openViewer(type){
+      try { updateLinks(); } catch(e){}
+
       const file = type === 'image' ? 'image-viewer.html' : 'surface-viewer.html';
       const url = file + '?scene=' + encodedScene();
       window.open(url, '_blank');
@@ -245,6 +249,15 @@
     }
     $('#btnPublishImage').onclick = ()=> openViewer('image');
     $('#btnPublishSurface').onclick = ()=> openViewer('surface');
+
+    function updateLinks(){
+      const urlImg = location.origin + location.pathname.replace('editor.html','image-viewer.html') + '?scene=' + encodedScene();
+      const urlSurf = location.origin + location.pathname.replace('editor.html','surface-viewer.html') + '?scene=' + encodedScene();
+      const aImg = document.getElementById('hrefImage'); if (aImg) aImg.href = urlImg;
+      const aSu = document.getElementById('hrefSurface'); if (aSu) aSu.href = urlSurf;
+    }
+
+    window.addEventListener('error', (e)=>{ const box=document.getElementById('dbg'); if(!box)return; box.style.display='block'; box.textContent = (box.textContent+"\n"+ (e.message||e.error||e.filename||'Error')).slice(-500); });
 
     // QR
     const qrModal = $('#qrModal'); const qrBox = $('#qr');
@@ -262,5 +275,6 @@
     updateUIFromData();
     resize();
   </script>
+<div id="dbg" style="position:fixed;right:8px;bottom:8px;background:#0d0f16;border:1px solid #222635;border-radius:10px;padding:8px 10px;color:#aab0c0;font:12px ui-monospace;max-width:40ch;z-index:20;display:none;"></div>
 </body>
 </html>
