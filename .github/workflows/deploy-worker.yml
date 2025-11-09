@@ -19,6 +19,9 @@ on:
   #     - 'wrangler.toml'
   #     - 'schema.sql'
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
     runs-on: ubuntu-latest

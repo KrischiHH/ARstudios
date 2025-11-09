@@ -46,6 +46,19 @@
       }
     }
     
+    // Sanitize URL to prevent XSS
+    function sanitizeUrl(url) {
+      if (!url) return '';
+      // Only allow http:// and https:// protocols
+      const urlStr = String(url);
+      if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+        return urlStr;
+      }
+      // Block javascript:, data:, and other potentially dangerous protocols
+      console.warn('Blocked potentially unsafe URL:', urlStr);
+      return '';
+    }
+    
     (async function initScene() {
       const data = await getSceneData();
     const sceneEl = document.querySelector('#scene');
@@ -74,7 +87,7 @@
     };
 
     // Optional: show the target reference as a plane (helps alignment)
-    const img = (data?.anchor?.src && data.anchor.src.endsWith('.png')) ? data.anchor.src : defaultImg;
+    const img = sanitizeUrl((data?.anchor?.src && data.anchor.src.endsWith('.png')) ? data.anchor.src : defaultImg);
     const plane = document.createElement('a-plane');
     plane.setAttribute('src', img);
     plane.setAttribute('height', 0.552);
@@ -83,7 +96,7 @@
 
     // Load model
     const model = document.createElement('a-gltf-model');
-    model.setAttribute('src', node.src);
+    model.setAttribute('src', sanitizeUrl(node.src));
     model.setAttribute('position', (node.transform?.position||[0,0,0]).join(' '));
     model.setAttribute('rotation', (node.transform?.rotation||[0,0,0]).join(' '));
     model.setAttribute('scale', (node.transform?.scale||[0.5,0.5,0.5]).join(' '));
@@ -93,7 +106,7 @@
     const tap = (node.behaviors||[]).find(b=>b.action==='playSound' && b.src);
     if (tap && tap.src){
       const sound = document.createElement('a-sound');
-      sound.setAttribute('src', tap.src);
+      sound.setAttribute('src', sanitizeUrl(tap.src));
       sound.setAttribute('autoplay', 'false');
       targetEl.appendChild(sound);
       targetEl.addEventListener('click', ()=> { sound.components.sound.playSound(); });

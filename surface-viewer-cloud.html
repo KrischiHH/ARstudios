@@ -61,6 +61,19 @@
       }
     }
     
+    // Sanitize URL to prevent XSS
+    function sanitizeUrl(url) {
+      if (!url) return '';
+      // Only allow http:// and https:// protocols
+      const urlStr = String(url);
+      if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+        return urlStr;
+      }
+      // Block javascript:, data:, and other potentially dangerous protocols
+      console.warn('Blocked potentially unsafe URL:', urlStr);
+      return '';
+    }
+    
     (async function initScene() {
       const data = await getSceneData();
     const node = (data?.nodes && data.nodes[0]) || {
@@ -81,8 +94,12 @@
     const loader = new GLTFLoader();
     let placed = null, mixer = null, clock = new THREE.Clock();
     function loadModel(url){
+      const sanitizedUrl = sanitizeUrl(url);
+      if (!sanitizedUrl) {
+        return Promise.reject(new Error('Invalid model URL'));
+      }
       return new Promise((resolve,reject)=>{
-        loader.load(url, (gltf)=>{
+        loader.load(sanitizedUrl, (gltf)=>{
           const obj = gltf.scene;
           obj.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
           // Animation (play first clip if exists)
@@ -101,10 +118,10 @@
       if (!navigator.xr || !(await navigator.xr.isSessionSupported('immersive-ar'))){
         document.querySelector('#fallback').style.display = 'block';
         const mv = document.querySelector('#mv');
-        mv.src = node.src;
+        mv.src = sanitizeUrl(node.src);
         // Optional iOS usdz (if provided in behaviors with key 'iosSrc')
         const iosSrc = node.behaviors?.find(b=>b.action==='iosSrc')?.src;
-        if (iosSrc) mv.setAttribute('ios-src', iosSrc);
+        if (iosSrc) mv.setAttribute('ios-src', sanitizeUrl(iosSrc));
         document.querySelector('#tip').textContent = "Dein Gerät unterstützt WebXR‑AR nicht – Fallback aktiv.";
         return true;
       }
