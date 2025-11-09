@@ -1,0 +1,17 @@
+{
+  "name": "ar-studio-cloudflare",
+  "version": "1.0.0",
+  "description": "Modern Web-AR Editor with Cloudflare Backend",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute ar-studio-db --file=./schema.sql"
+  },
+  "keywords": ["webxr", "ar", "cloudflare", "workers"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}

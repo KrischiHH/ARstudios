@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+  <title>AR Studio – Image Tracking Viewer (Cloud)</title>
+  <!-- A-Frame & MindAR (CDN, stabil) -->
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    html,body {margin:0;height:100%;background:#000;}
+    .overlay { position:fixed; top:10px; left:10px; z-index:10; color:#fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:rgba(0,0,0,.45); padding:8px 10px; border-radius:10px; }
+    .overlay small{color:#c8c8d0}
+  </style>
+</head>
+<body>
+  <div class="overlay">📸 Richte die Kamera auf das Target‑Bild.<br><small>Tippe auf das Objekt für Sound.</small></div>
+
+  <a-scene id="scene" color-space="sRGB" renderer="colorManagement: true, physicallyCorrectLights" vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+    <a-assets id="assets"></a-assets>
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+    <a-entity id="target" mindar-image-target="targetIndex: 0"></a-entity>
+  </a-scene>
+
+  <script src="api-client.js"></script>
+  <script>
+    // Parse scene JSON from query (?scene=base64 or ?id=sceneId)
+    async function getSceneData(){
+      try{
+        const p = new URLSearchParams(location.search);
+        
+        // Check if loading from cloud by ID
+        const sceneId = p.get('id');
+        if (sceneId) {
+          const api = window.arStudioAPI;
+          const result = await api.getScene(sceneId);
+          return result.scene.scene_data;
+        }
+        
+        // Fallback to base64 encoded scene
+        const raw = decodeURIComponent(atob(p.get('scene')||''));
+        return JSON.parse(raw);
+      }catch(e){ 
+        console.error('Failed to load scene:', e);
+        return null; 
+      }
+    }
+    
+    (async function initScene() {
+      const data = await getSceneData();
+    const sceneEl = document.querySelector('#scene');
+    const assetsEl = document.querySelector('#assets');
+    const targetEl = document.querySelector('#target');
+
+    // Default MindAR sample target if none provided
+    const defaultMind = "https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.mind";
+    const defaultImg  = "https://cdn.jsdelivr.net/gh/hiukim/mind-ar-js@1.2.5/examples/image-tracking/assets/card-example/card.png";
+
+    // Configure mindar-image attribute dynamically
+    const mindAttr = { "imageTargetSrc": defaultMind };
+    if (data?.anchor?.type === 'image' && data?.anchor?.src) {
+      // If user passed only a PNG, try to use the official example .mind; otherwise fallback to default
+      if (data.anchor.src.endsWith('.mind')) mindAttr.imageTargetSrc = data.anchor.src;
+      // if it's an image, we still use default .mind, but show the image plane
+    }
+    sceneEl.setAttribute('mindar-image', Object.entries(mindAttr).map(([k,v])=>`${k}: ${v}`).join('; '));
+
+    // Build content under the target
+    const node = (data?.nodes && data.nodes[0]) || {
+      id:"demo", type:"model",
+      src:"https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+      transform:{ position:[0,0,0], rotation:[0,0,0], scale:[0.5,0.5,0.5] },
+      behaviors:[{on:"onTap",action:"playSound",src:""}]
+    };
+
+    // Optional: show the target reference as a plane (helps alignment)
+    const img = (data?.anchor?.src && data.anchor.src.endsWith('.png')) ? data.anchor.src : defaultImg;
+    const plane = document.createElement('a-plane');
+    plane.setAttribute('src', img);
+    plane.setAttribute('height', 0.552);
+    plane.setAttribute('width', 1);
+    targetEl.appendChild(plane);
+
+    // Load model
+    const model = document.createElement('a-gltf-model');
+    model.setAttribute('src', node.src);
+    model.setAttribute('position', (node.transform?.position||[0,0,0]).join(' '));
+    model.setAttribute('rotation', (node.transform?.rotation||[0,0,0]).join(' '));
+    model.setAttribute('scale', (node.transform?.scale||[0.5,0.5,0.5]).join(' '));
+    targetEl.appendChild(model);
+
+    // Audio on tap (requires user gesture)
+    const tap = (node.behaviors||[]).find(b=>b.action==='playSound' && b.src);
+    if (tap && tap.src){
+      const sound = document.createElement('a-sound');
+      sound.setAttribute('src', tap.src);
+      sound.setAttribute('autoplay', 'false');
+      targetEl.appendChild(sound);
+      targetEl.addEventListener('click', ()=> { sound.components.sound.playSound(); });
+    }
+    })();
+  </script>
+</body>
+</html>

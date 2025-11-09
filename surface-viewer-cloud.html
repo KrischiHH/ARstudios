@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+  <title>AR Studio – Surface (WebXR) Viewer (Cloud)</title>
+  <style>
+    html,body { margin:0; height:100%; background:#000; }
+    #fallback { display:none; position:absolute; inset:0; }
+    #tip { position:fixed; top:10px; left:10px; z-index:10; color:#fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:rgba(0,0,0,.45); padding:8px 10px; border-radius:10px; }
+    .ar-btn { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); padding: 10px 14px; border-radius: 12px; border:none; background:#2a60ff; color:#fff; font-weight:600; }
+  </style>
+  <!-- model-viewer fallback (iOS / unsupported) -->
+  <script type="module" src="https://unpkg.com/@google/model-viewer/dist/model-viewer.min.js"></script>
+</head>
+<body>
+  <div id="tip">Tippe auf eine Fläche, um das Objekt zu platzieren.</div>
+  <div id="fallback">
+    <model-viewer id="mv" ar ar-modes="scene-viewer quick-look webxr" camera-controls style="width:100%;height:100%; background:#000;" exposure="1">
+      <button slot="ar-button" class="ar-btn">In AR öffnen</button>
+    </model-viewer>
+  </div>
+  <canvas id="c"></canvas>
+
+  <script src="api-client.js"></script>
+  <script type="module">
+    import * as THREE from 'https://unpkg.com/three@0.158.0/build/three.module.js';
+    import { GLTFLoader } from 'https://unpkg.com/three@0.158.0/examples/jsm/loaders/GLTFLoader.js';
+    import { ARButton } from 'https://unpkg.com/three@0.158.0/examples/jsm/webxr/ARButton.js';
+
+    const canvas = document.querySelector('#c');
+    const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:true});
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.xr.enabled = true;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.01, 20);
+    const light = new THREE.HemisphereLight(0xffffff, 0x444466, 1.2); scene.add(light);
+    const dir = new THREE.DirectionalLight(0xffffff, 1); dir.position.set(1,2,1); scene.add(dir);
+
+    // Parse scene from query (?scene=base64 or ?id=sceneId)
+    async function getSceneData(){
+      try {
+        const p = new URLSearchParams(location.search);
+        
+        // Check if loading from cloud by ID
+        const sceneId = p.get('id');
+        if (sceneId) {
+          const api = window.arStudioAPI;
+          const result = await api.getScene(sceneId);
+          return result.scene.scene_data;
+        }
+        
+        // Fallback to base64 encoded scene
+        const raw = decodeURIComponent(atob(p.get('scene')||''));
+        return JSON.parse(raw);
+      } catch(e){ 
+        console.error('Failed to load scene:', e);
+        return null; 
+      }
+    }
+    
+    (async function initScene() {
+      const data = await getSceneData();
+    const node = (data?.nodes && data.nodes[0]) || {
+      id:"demo", type:"model",
+      src:"https://modelviewer.dev/shared-assets/models/Astronaut.glb",
+      transform:{ position:[0,0,0], rotation:[0,0,0], scale:[0.5,0.5,0.5] },
+      behaviors:[{on:"onStart",action:"playAnimation",clip:"__all__"}]
+    };
+
+    // Reticle
+    const reticleGeo = new THREE.RingGeometry(0.08, 0.1, 32).rotateX(-Math.PI/2);
+    const reticleMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const reticle = new THREE.Mesh(reticleGeo, reticleMat);
+    reticle.matrixAutoUpdate = false;
+    reticle.visible = false;
+    scene.add(reticle);
+
+    const loader = new GLTFLoader();
+    let placed = null, mixer = null, clock = new THREE.Clock();
+    function loadModel(url){
+      return new Promise((resolve,reject)=>{
+        loader.load(url, (gltf)=>{
+          const obj = gltf.scene;
+          obj.traverse(o=>{ if(o.isMesh){ o.castShadow=true; o.receiveShadow=true; } });
+          // Animation (play first clip if exists)
+          if (gltf.animations && gltf.animations.length){
+            mixer = new THREE.AnimationMixer(obj);
+            const clip = gltf.animations[0];
+            const act = mixer.clipAction(clip); act.play();
+          }
+          resolve(obj);
+        }, undefined, reject);
+      });
+    }
+
+    // Fallback to <model-viewer> if immersive-ar is not supported
+    async function maybeFallback(){
+      if (!navigator.xr || !(await navigator.xr.isSessionSupported('immersive-ar'))){
+        document.querySelector('#fallback').style.display = 'block';
+        const mv = document.querySelector('#mv');
+        mv.src = node.src;
+        // Optional iOS usdz (if provided in behaviors with key 'iosSrc')
+        const iosSrc = node.behaviors?.find(b=>b.action==='iosSrc')?.src;
+        if (iosSrc) mv.setAttribute('ios-src', iosSrc);
+        document.querySelector('#tip').textContent = "Dein Gerät unterstützt WebXR‑AR nicht – Fallback aktiv.";
+        return true;
+      }
+      return false;
+    }
+    if (await maybeFallback()) { /* stop here */ } else {
+      document.body.appendChild(ARButton.createButton(renderer, { requiredFeatures: ['hit-test'] }));
+      let currentSession = null;
+      const controller = renderer.xr.getController(0);
+      scene.add(controller);
+
+      let hitTestSource = null, localSpace = null;
+      controller.addEventListener('select', async ()=>{
+        if (reticle.visible && !placed){
+          placed = await loadModel(node.src);
+          placed.position.setFromMatrixPosition(reticle.matrix);
+          placed.scale.set(...(node.transform?.scale || [0.5,0.5,0.5]));
+          scene.add(placed);
+        }
+      });
+
+      renderer.setAnimationLoop((time, frame)=>{
+        if (mixer) mixer.update(clock.getDelta());
+        if (frame){
+          const referenceSpace = renderer.xr.getReferenceSpace();
+          const session = renderer.xr.getSession();
+          if (!hitTestSource){
+            session.requestReferenceSpace('viewer').then((space)=>{
+              session.requestHitTestSource({ space }).then((source)=>{ hitTestSource = source; });
+            });
+            session.addEventListener('end', ()=>{ hitTestSource = null; });
+          }
+          const viewerPose = frame.getViewerPose(referenceSpace);
+          if (viewerPose && hitTestSource){
+            const hits = frame.getHitTestResults(hitTestSource);
+            if (hits.length){
+              const hit = hits[0];
+              const pose = hit.getPose(referenceSpace);
+              reticle.visible = true;
+              reticle.matrix.fromArray(pose.transform.matrix);
+            } else {
+              reticle.visible = false;
+            }
+          }
+        }
+        renderer.render(scene, camera);
+      });
+
+      window.addEventListener('resize', ()=>{
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+      });
+    }
+    })();
+  </script>
+</body>
+</html>
