@@ -1,0 +1,46 @@
+name: Deploy to Cloudflare Workers
+
+# This workflow is OPTIONAL and requires Cloudflare API token to be set in GitHub Secrets
+# To use this workflow:
+# 1. Go to Cloudflare Dashboard → My Profile → API Tokens
+# 2. Create a token with "Edit Workers" permissions
+# 3. Add it to GitHub: Settings → Secrets → Actions → New repository secret
+#    Name: CLOUDFLARE_API_TOKEN
+#    Value: <your token>
+
+on:
+  workflow_dispatch: # Manual trigger only (not automatic)
+  # Uncomment below to auto-deploy on push to main:
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - 'src/**'
+  #     - 'wrangler.toml'
+  #     - 'schema.sql'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy Worker
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy to Cloudflare Workers
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          command: deploy
